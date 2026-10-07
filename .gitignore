@@ -1,0 +1,15 @@
+node_modules/
+dist/
+
+index.js
+index.d.ts
+*.node
+
+npm/
+
+target/
+
+.vysk/
+
+*.tgz
+.DS_Store
