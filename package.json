@@ -3,7 +3,23 @@
   "version": "0.1.0",
   "description": "Optimize website images (PNG/JPG) to WebP. A Rust-powered CLI — no Rust required to install.",
   "license": "MIT",
-  "keywords": ["images", "webp", "optimize", "compression", "cli", "performance"],
+  "keywords": [
+    "images",
+    "webp",
+    "optimize",
+    "compression",
+    "cli",
+    "performance"
+  ],
+  "author": "Buikem Vans",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Mr-vtx/vysk.git"
+  },
+  "homepage": "https://github.com/Mr-vtx/vysk#readme",
+  "bugs": {
+    "url": "https://github.com/Mr-vtx/vysk/issues"
+  },
   "bin": {
     "vysk": "dist/cli.js"
   },
