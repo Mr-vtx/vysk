@@ -1,8 +1,9 @@
 # Vysk
 
 Optimize website images so pages load faster and use less bandwidth.
-Scans a project for PNG/JPG/JPEG and converts them to WebP - smaller,
-tries to maintain same quality, original files untouched.
+Vysk scans your project for PNG/JPG/JPEG files and converts them to WebP,
+leaving your original files untouched. Then it can rewrite your code to use
+the new files, remove the originals you no longer need, and undo the rewrite.
 
 ```bash
 npm install -D vysk
@@ -10,80 +11,59 @@ npx vysk -c
 ```
 
 ```
-public/
-├── hero.png       2.4 MB
-├── logo.png       180 KB
-└── banner.jpg     1.8 MB
+public/                     public/
+├── hero.png                ├── hero.png
+├── logo.png        →       ├── hero.webp
+└── banner.jpg              ├── logo.png
+                            ├── logo.webp
+                            ├── banner.jpg
+                            └── banner.webp
 ```
 
-becomes:
+No Rust required. The encoder is a native addon (built with
+[napi-rs](https://napi.rs)) that ships inside the package as a prebuilt binary.
 
-```
-public/
-├── hero.png
-├── hero.webp
-├── logo.png
-├── logo.webp
-├── banner.jpg
-└── banner.webp
-```
+**Supported platforms:** Linux x64 (glibc), Windows x64, macOS Intel, macOS
+Apple Silicon. Node.js 18+.
+Not yet supported: Linux arm64, Alpine/musl, Windows arm64 (see [Roadmap](#roadmap)).
 
-No Rust required to install - the heavy lifting happens in a native
-addon shipped as a prebuilt binary (via [napi-rs](https://napi.rs)),
-the same distribution model `sharp` and `esbuild` use.
+## Commands
 
-## How it works
+| Command | What it does |
+| --- | --- |
+| `vysk -c` | Scan configured paths and convert images to WebP |
+| `vysk rewrite` | Update source code to reference the converted files |
+| `vysk clean` | Delete originals that no longer appear to be referenced |
+| `vysk undo` | Restore files changed by the last `rewrite` |
+| `vysk doctor` | Check Node version, native binding, project root and cache |
 
-- **Node/TypeScript** (`src/scanner.ts`, `cli.ts`, `report.ts`) — finds
-  the project root, walks `public/` for supported images, drives the
-  optimization loop, prints the report.
-- **Rust** (`src/lib.rs`) — decodes the image, encodes it to WebP by
-  default, or to AVIF if the image exceeds WebP's 16,383px-per-side limit
-  (via the pure-Rust [`ravif`](https://docs.rs/ravif) encoder). Connected
-  to Node via [napi-rs](https://napi.rs).
-
-Images are always encoded through their RGBA representation, so alpha
-transparency survives regardless of source format.
-
-## Development
-
-Requires Node.js 18+, a Rust toolchain (`rustup` recommended), and
-`nasm` (required to build `rav1e`, the AVIF encoder — install via
-`apt install nasm` / `brew install nasm` / see
-[ilammy/setup-nasm](https://github.com/ilammy/setup-nasm) for CI) for
-building the native addon — end users of the published package don't
-need any of this.
+A typical flow:
 
 ```bash
-npm install
-npm run build        # builds the native addon, then compiles TypeScript
-npm run typecheck     # tsc --noEmit
-npm run test:unit     # runs the scanner tests (pure TS, no Rust needed)
+npx vysk -c          # 1. convert (originals untouched)
+npx vysk rewrite     # 2. point your code at the .webp files (asks first)
+npx vysk clean       # 3. optionally remove the now-unused originals (asks first)
 ```
 
-Try it on a real project:
+If something goes wrong after step 2, run `npx vysk undo`. If something isn't
+working after install, run `npx vysk doctor` first.
 
-```bash
-cd /path/to/some/project
-node /path/to/vysk/dist/cli.js -c
-```
-
-### CLI options
+### Options for `vysk -c`
 
 | Flag | Description | Default |
 | --- | --- | --- |
-| `-c`, `--compress` | Scan configured paths and optimize | — |
+| `-c`, `--compress` | Scan configured paths and optimize | n/a |
 | `-q`, `--quality <n>` | Encode quality, 0-100 (WebP, or AVIF for oversized images) | `82` |
 | `--lossless` | Force lossless WebP encoding | `false` |
-| `--no-cache` | Ignore the cache and reprocess every image | — |
-| `--dry-run` | Show what would happen — no files written, cache untouched | — |
-| `--json` | Print the report as JSON instead of colored text (CI/scripting) | — |
-| `-h`, `--help` | Show help | — |
+| `--no-cache` | Ignore the cache and reprocess every image | n/a |
+| `--dry-run` | Show what would happen: no files written, cache untouched | n/a |
+| `--json` | Print the report as JSON instead of colored text (CI/scripting) | n/a |
+| `-h`, `--help` | Show help | n/a |
 
 ### Config file
 
-`vysk.config.js` in the project root (CommonJS, same convention
-as `next.config.js`/`tailwind.config.js`):
+`vysk.config.js` in the project root (CommonJS, same convention as
+`next.config.js` / `tailwind.config.js`):
 
 ```js
 module.exports = {
@@ -93,22 +73,18 @@ module.exports = {
 };
 ```
 
-Precedence: CLI flag > config file > built-in default. A missing or
-broken config file logs a warning and falls back to defaults rather
-than failing the run.
+Precedence: CLI flag > config file > built-in default. A missing or broken
+config file logs a warning and falls back to defaults instead of failing.
 
 ### Caching
 
-Results are cached in `.vysk/cache.json` (already gitignored).
-An image is only reprocessed if any of these changed since the last
-run: the file's content, the `quality`/`lossless` settings, or the
-installed vysk version. If the cached output file has been
-deleted, it's treated as a miss and reprocessed. Use `--no-cache` to
-bypass the cache entirely.
+Results are cached in `.vysk/cache.json` (already gitignored). An image is only
+reprocessed if one of these changed since the last run: the file's content, the
+`quality`/`lossless` settings, or the installed Vysk version. If the cached
+output file was deleted, it counts as a miss and is reprocessed. Use
+`--no-cache` to bypass the cache.
 
-### Running on every build
-
-The simplest integration — add to the target project's `package.json`:
+### Run it on every build
 
 ```json
 {
@@ -118,140 +94,139 @@ The simplest integration — add to the target project's `package.json`:
 }
 ```
 
-`npm run build` will now run Vysk first automatically. A deeper
-integration (an actual Next.js/webpack plugin hooking into the
-bundler) is real additional scope — this covers "runs automatically"
-without it, and pairs with the cache above so repeat builds only
-process what changed.
+`npm run build` now runs Vysk first. Thanks to the cache, repeat builds only
+process new or changed images.
 
-## Publishing
+## Rewrite, clean and undo
 
-Don't publish by hand — a single machine can only ever build the
-`.node` binary for its own platform, so an `npm publish` run locally
-would ship a package that only works there.
+### `vysk rewrite`
 
-```bash
-git tag v0.2.0
-git push --tags
-```
+Reads `.vysk/cache.json` to find every image that has been converted, scans
+`.tsx` / `.jsx` / `.js` / `.css` / `.scss` for references to the originals
+(JSX `src="..."`, CSS `url(...)`, local `import`/`require` specifiers), and
+rewrites them to the `.webp` / `.avif` output. This is a full replace, not a
+`<picture>` fallback: once rewritten, your code no longer references the
+original.
 
-Pushing a version tag triggers `.github/workflows/release.yml`, which
-builds the native addon on real Linux, Windows, and macOS (x64 + arm64)
-runners, verifies each one actually loads before continuing, then
-**stages** a single package containing all four binaries (`npm stage
-publish` — the repo's npm token is scoped to stage-only, so it can't
-publish directly). A maintainer still has to go to **Staged Packages**
-on npmjs.com and promote it with 2FA before it actually goes live. You
-can also trigger the workflow manually from the Actions tab
-(`workflow_dispatch`) without pushing a tag. Requires an `NPM_TOKEN`
-secret in the repo's Settings → Secrets and variables → Actions.
+Safety:
+- Refuses to run on an unclean git working tree (or a non-git project) unless
+  you pass `--force`. Git is your real rollback path.
+- Always prints the complete plan first and asks for explicit `y`/`N`.
+  Piped or non-interactive input defaults to No.
+- Backs up every touched file to `.vysk/rewrite-backups/<timestamp>/` before
+  writing.
 
-`.github/workflows/ci.yml` is separate — it just builds and tests on
-each OS for every push/PR, as a sanity check. It doesn't publish
-anything.
+### `vysk clean`
 
-### Rewriting references (`vysk rewrite`)
-
-Once `vysk -c` has optimized some images, `vysk rewrite`
-updates your actual source code to point at the new files:
+Finds originals that have a recorded conversion and no longer appear in any
+scanned source file, shows the list with sizes, and asks before deleting.
 
 ```bash
-npx vysk rewrite
+npx vysk clean             # show the plan, ask to confirm
+npx vysk clean --dry-run   # show the plan, delete nothing
 ```
 
-It reads `.vysk/cache.json` to find every image that's already
-been converted, scans `.tsx`/`.jsx`/`.js`/`.css`/`.scss` for references
-to those originals (JSX `src="..."`, CSS `background-image: url(...)`,
-and local `import`/`require` specifiers), and — after showing the full
-plan and asking for explicit `y`/`N` confirmation — rewrites them to
-the `.webp`/`.avif` output. This is a **full replace**, not a
-`<picture>`-with-fallback: once rewritten, the original file is no
-longer referenced by your code at all.
+Same safety model as `rewrite` (clean git tree or `--force`, explicit
+confirmation). "Not referenced" is evidence, not proof: see
+[Limitations](#limitations) and read the list before confirming.
 
-Safety, all non-negotiable:
-- Refuses to run on an unclean git working tree (or a non-git project)
-  unless you pass `--force` — git is your real rollback path here.
-- Always prints the complete plan before ever asking to apply it.
-- Never writes without an explicit `y` — piped/non-interactive input
-  safely defaults to No rather than guessing.
-- Backs up every touched file's original content to
-  `.vysk/rewrite-backups/<timestamp>/` before writing, in
-  addition to whatever git already gives you.
+### `vysk undo`
 
-This is regex/text-based matching, not an AST-aware codemod — dynamic
-or computed paths (e.g. `` src={`/images/${slug}.jpg`} ``) won't be
-caught. Always read the printed plan before answering `y`.
-
-### Removing unused originals (`vysk clean`)
-
-Once `rewrite` has pointed your source at the optimized files, the
-original PNG/JPG is often dead weight. `vysk clean` finds
-originals with a recorded conversion that no longer appear to be
-referenced anywhere in scanned source, shows the full list with sizes,
-and asks for confirmation before deleting them:
+Restores files from the backups `rewrite` made.
 
 ```bash
-npx vysk clean          # shows the plan, asks to confirm
-npx vysk clean --dry-run   # shows the plan, deletes nothing
+npx vysk undo              # restore the most recent backup
+npx vysk undo --list       # list backups, newest first
+npx vysk undo <timestamp>  # restore a specific one
 ```
 
-Uses the exact same text-matching rules as `rewrite` — so it shares the
-same blind spot: an image referenced only from a file type outside
-`.tsx`/`.jsx`/`.js`/`.css`/`.scss` (a plain `.html` file, for instance),
-or via a dynamic/computed path, won't be recognized as "referenced" and
-could be flagged even though it's still in use. "Not referenced" here
-is evidence, not proof — review the printed list before confirming.
-Same safety model as `rewrite`: refuses to run on an unclean git tree
-unless `--force` is passed.
+Shows the files it will overwrite, asks for confirmation, and refuses on an
+unclean git tree unless `--force` is passed.
 
-### Undoing a rewrite (`vysk undo`)
+### `vysk doctor`
 
-`rewrite` backs up every file it touches to
-`.vysk/rewrite-backups/<timestamp>/` before writing — `undo`
-is what actually reads that backup back:
+Confirms Node.js is a supported version, the native addon loads on this
+platform, the project root can be found, and `.vysk/cache.json` (if present) is
+valid JSON. Read-only, safe to run any time.
 
-```bash
-npx vysk undo             # restores the most recent backup
-npx vysk undo --list      # lists available backups, newest first
-npx vysk undo <timestamp> # restores a specific one
-```
+## How it works
 
-Same safety model again: shows the full list of files it's about to
-overwrite, asks for confirmation, and refuses on an unclean git tree
-unless `--force` is passed.
+- **Node/TypeScript** (`src/scanner.ts`, `cli.ts`, `report.ts`) finds the
+  project root, walks the configured paths for supported images, drives the
+  optimization loop and prints the report.
+- **Rust** (`src/lib.rs`) decodes each image and encodes it to WebP. Images
+  that exceed WebP's 16,383px-per-side limit are encoded to AVIF instead (via
+  the pure-Rust [`ravif`](https://docs.rs/ravif) encoder). It's connected to
+  Node with [napi-rs](https://napi.rs).
 
-### Checking your setup (`vysk doctor`)
+Images are always encoded through their RGBA representation, so alpha
+transparency survives regardless of the source format.
 
-```bash
-npx vysk doctor
-```
+## Limitations
 
-Confirms Node.js is a supported version, the native addon actually
-loads on this platform, your project root can be found, and
-`.vysk/cache.json` (if present) is valid JSON. Read-only, no
-confirmation needed — safe to run any time, and the first thing worth
-running if something's not working after install.
+- Only PNG, JPG and JPEG inputs, and only inside the configured `paths`
+  (default: `public/`).
+- `rewrite` and `clean` use text matching, not an AST. Dynamic or computed
+  paths (for example `` src={`/images/${slug}.jpg`} ``) are not detected, and
+  references in file types outside `.tsx`/`.jsx`/`.js`/`.css`/`.scss` (plain
+  `.html`, for example) are not seen, so `clean` could flag an original that is
+  still in use. Always read the printed plan.
+- `rewrite` replaces references outright. There is no `<picture>` fallback
+  for browsers without WebP support.
+- Prebuilt binaries cover four platforms (see above).
 
 ## Roadmap
 
-**Phase 1 — Optimize** ✅ done (`v0.x`)
-CLI-triggered, one-shot conversion. Non-destructive: only `.webp`/`.avif`
-files are written, originals are never touched.
+**Shipped**
+- Optimize: one-shot PNG/JPG → WebP (AVIF for oversized images), originals
+  untouched
+- Automate: hash-based cache, config file, `prebuild` pattern, `--json` output
+- Website intelligence: `rewrite`, `clean`, `undo`
+- `doctor` diagnostics
 
-**Phase 2 — Automate** ✅ done (`v1.x`)
-Hash-based caching (`.vysk/cache.json`) so only new/changed images
-get reprocessed, a config file for defaults, and a `prebuild` script
-pattern to run automatically on every build. Still non-destructive.
+**Next**
+- Responsive variants and `srcset` generation
+- Oversized-image detection
+- Linux arm64 and Alpine/musl prebuilt binaries
+- Bundler integration (a Next.js / webpack plugin) beyond the `prebuild` pattern
 
-**Phase 3 — Website intelligence** 🚧 in progress (`v2.x`)
-Reference rewriting (`vysk rewrite`), removing now-unused
-originals (`vysk clean`), and restoring a rewrite (`vysk
-undo`) are all done — see above. Still to come: responsive
-variants/`srcset`, oversized-image detection.
+## Development
 
-**Also shipped:** `vysk doctor` (environment diagnostics) and
-`--json` output on `-c` for CI/scripting.
+Requires Node.js 18+, a Rust toolchain ([rustup](https://rustup.rs)), and
+`nasm` (needed to build `rav1e`, the AVIF encoder: `apt install nasm`,
+`brew install nasm`, or [ilammy/setup-nasm](https://github.com/ilammy/setup-nasm)
+in CI). End users of the published package need none of this.
+
+```bash
+npm install
+npm run build        # builds the native addon, then compiles TypeScript
+npm run typecheck    # tsc --noEmit
+npm run test:unit    # TypeScript unit tests (no Rust needed)
+```
+
+Try it on a real project:
+
+```bash
+cd /path/to/some/project
+node /path/to/vysk/dist/cli.js -c
+```
+
+## Releasing
+
+Don't publish from a local machine: a single machine can only build the native
+binary for its own platform. Bump `version` in `package.json`, then push a tag:
+
+```bash
+git tag v0.1.1
+git push origin main v0.1.1
+```
+
+The tag triggers `.github/workflows/release.yml`, which builds the addon on real
+Linux, Windows and macOS (Intel and Apple Silicon) runners, checks that each
+binary loads, and publishes one package containing all four. It needs an
+`NPM_TOKEN` repository secret. `.github/workflows/ci.yml` runs build and tests on
+each OS for every push and PR and never publishes.
 
 ## License
 
-MIT — see [LICENSE](./LICENSE).
+MIT. See [LICENSE](./LICENSE).
