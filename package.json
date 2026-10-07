@@ -1,6 +1,6 @@
 {
   "name": "vysk",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Optimize website images (PNG/JPG) to WebP. A Rust-powered CLI — no Rust required to install.",
   "license": "MIT",
   "keywords": [

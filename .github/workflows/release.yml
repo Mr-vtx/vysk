@@ -1,11 +1,5 @@
 name: Release
 
-# Builds the native addon on real Linux, Windows, and macOS (x64 + arm64)
-# runners, sanity-checks that each one actually loads, then publishes a
-# single npm package containing all four binaries.
-#
-# Trigger: push a tag like v0.2.0, or run manually from the Actions tab.
-
 on:
   push:
     tags:
@@ -18,7 +12,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
+          - os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             artifact: vysk.linux-x64-gnu.node
 
@@ -47,7 +41,6 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      # rav1e (the AVIF fallback encoder) needs nasm to build on every OS
       - name: Install nasm
         uses: ilammy/setup-nasm@v1
 
@@ -74,6 +67,16 @@ jobs:
           path: ${{ matrix.artifact }}
           if-no-files-found: error
 
+      - name: Upload napi loader files (once)
+        if: matrix.os == 'ubuntu-22.04'
+        uses: actions/upload-artifact@v4
+        with:
+          name: napi-loader
+          path: |
+            index.js
+            index.d.ts
+          if-no-files-found: error
+
   publish:
     needs: build
     if: startsWith(github.ref, 'refs/tags/v')
@@ -87,15 +90,16 @@ jobs:
           node-version: 22
           registry-url: "https://registry.npmjs.org"
 
-      - name: Download all native binaries
+      - name: Download all build artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
 
-      - name: Place binaries at package root
+      - name: Place binaries and loader at package root
         run: |
           find artifacts -name "*.node" -exec cp {} . \;
-          ls -la *.node
+          cp artifacts/napi-loader/index.js artifacts/napi-loader/index.d.ts .
+          ls -la *.node index.js index.d.ts
 
       - name: Install deps and build TS
         run: |
@@ -104,6 +108,15 @@ jobs:
 
       - name: Show what will be published
         run: npm pack --dry-run
+
+      - name: Smoke-test the packed tarball
+        run: |
+          npm pack --ignore-scripts
+          mkdir /tmp/smoke
+          cd /tmp/smoke
+          npm init -y > /dev/null
+          npm i "$GITHUB_WORKSPACE"/vysk-*.tgz
+          node -e "require('vysk'); console.log('package loads OK')"
 
       - name: Publish to npm
         run: npm publish --access public --ignore-scripts
