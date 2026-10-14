@@ -1,22 +1,31 @@
 {
   "name": "vysk",
   "version": "0.1.1",
-  "description": "Optimize website images (PNG/JPG) to WebP. A Rust-powered CLI — no Rust required to install.",
+  "description": "Rust-powered image optimization CLI for any web project. Convert PNG and JPEG to WebP, cache results, and safely update image references. Install via npm, no Rust required.",
   "license": "MIT",
   "keywords": [
-    "images",
+    "vysk",
+    "image-optimization",
+    "image-optimizer",
+    "image-compression",
+    "image-converter",
     "webp",
-    "optimize",
-    "compression",
+    "png-to-webp",
+    "jpeg-to-webp",
+    "rust",
     "cli",
-    "performance"
+    "npm",
+    "web-performance",
+    "build-tools",
+    "nextjs",
+    "react"
   ],
   "author": "Buikem Vans",
+  "homepage": "https://www.npmjs.com/package/vysk",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Mr-vtx/vysk.git"
   },
-  "homepage": "https://github.com/Mr-vtx/vysk#readme",
   "bugs": {
     "url": "https://github.com/Mr-vtx/vysk/issues"
   },
